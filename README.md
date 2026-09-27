@@ -52,8 +52,8 @@ can just type:
 ollama list 'gemma*'
 ```
 
-(If you downloaded to some other folder instead, drop the command's output
-wherever you like, or run the script's own installer from that folder:
+(If you downloaded to a different folder, just run it from there, or install
+it into a PATH bin dir with the script's own installer:
 `ollama.cmd install [TARGET_DIR]` on Windows / `./ollama.py install [TARGET_DIR]`
 on Unix — it copies the script and shim into `%USERPROFILE%\bin` or
 `~/.local/bin` by default and tells you if the target isn't on PATH.)
@@ -153,6 +153,10 @@ ollama doctor -n                     # probe/report only; nothing is touched
 
 Exit codes: `0` healthy or recovered · `1` stuck and could not be recovered ·
 `3` stuck but recovery declined (or `--check-only`).
+
+Status lines are colored on a real terminal — **green** for healthy/pass,
+**red** for stuck/failed; piped output and the log files stay plain, and
+`NO_COLOR` is honored.
 
 Logs are written next to the running copy (so dev runs log to the dev
 folder, installed runs to `~/bin`); override with `--log-dir`.
