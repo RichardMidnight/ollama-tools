@@ -1,0 +1,9 @@
+__pycache__/
+*.py[cod]
+# generated test outputs
+*_response.txt
+# recovery run logs (ollama.py recover writes these next to the script)
+ollama_recover_*.log
+ollama_fix_*.log
+# local archive of old versions/snapshots - git history replaces it
+old/
