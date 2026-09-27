@@ -11,9 +11,10 @@ lacks:
   (`nemotron3:33b` + `-m my-sys` → `nemotron3-my-sys:33b`)
 - **`test`** — run a prompt against several models at once, optionally
   through a Modelfile, capture results to files, and get an LLM-judge rating
-- **`recover`** — diagnose (and fix) a stuck Ollama model runner: inference
-  probe with a first-token timeout, graceful unload, targeted kill of only
-  *your* model's `llama-server`, re-test — all with a diagnostic log
+- **`doctor`** — probe whether inference actually works; if the runner is
+  wedged, report it (diagnostic log) and **ask before acting** — on your
+  yes: graceful unload, targeted kill of only *your* model's `llama-server`,
+  re-probe
 - **Passthrough** for `ps`, `show`, `pull`
 
 ## Requirements
@@ -76,7 +77,7 @@ ollama rm PATTERN [PATTERN ...]          # remove matches (asks for 'yes')
 ollama stop PATTERN [PATTERN ...]        # unload matching running models
 ollama create NEWNAME -f MODELFILE -m BASE_PAT
 ollama test -m MODELS -p PROMPT [-f MODELFILE] [-o] [--rate] [--judge M]
-ollama recover [MODEL] [--url URL] [--first-token-window N] [--stop-wait N]
+ollama doctor [MODEL] [--url URL] [--first-token-window N] [--stop-wait N] [-y|-n]
 ollama ps | ollama show MODEL | ollama pull MODEL   # passthrough to real ollama
 ollama -V                                    # version + which copy is running
 ```
@@ -125,25 +126,35 @@ ollama test -m 'nemotron3*' -f ./SYSTEM -p prompt.txt --rate --judge qwen3-unbou
 
 Exit code is `1` if any model failed, so it chains cleanly in scripts.
 
-### Stuck-runner recovery
+### Stuck-runner doctor
 
-`recover` is the heavy one. It:
+`doctor` is the heavy one. It:
 
 1. Checks whether a newer Ollama release exists (informational, online)
 2. Saves diagnostics (`ollama -v`, `ps`, process list, `nvidia-smi`) to a
-   timestamped `ollama_recover_*.log` next to the script
+   timestamped `ollama_doctor_*.log` next to the script
 3. Streams a tiny chat request — **first token within the window = healthy**,
-   in which case it touches nothing
-4. On failure: graceful `ollama stop`, waits for unload
-5. If still stuck: kills *only* the `llama-server` identified as serving that
-   model (matched via the model manifest's layer digest) — other models'
-   runners are left alone
+   in which case it touches nothing and exits 0
+4. If wedged: prints what's wrong and **asks** before doing anything —
+   `-y` pre-answers yes (unattended), `-n`/`--check-only` never attempts
+   recovery, and non-interactive stdin auto-declines, so a bare `doctor`
+   can never act by surprise
+5. On yes: graceful `ollama stop`, waits for unload, then — if still stuck —
+   kills *only* the `llama-server` identified as serving that model (matched
+   via the model manifest's layer digest) — other models' runners left alone
 6. Re-tests inference and reports the outcome
 
 ```
-ollama recover                       # default model qwen3.8:27b
-ollama recover nemotron3:33b --first-token-window 30 --stop-wait 30
+ollama doctor                        # default: whichever model is loaded
+ollama doctor nemotron3:33b --first-token-window 30 --stop-wait 30
+ollama doctor -y                     # unattended: answer yes without asking
+ollama doctor -n                     # probe/report only; nothing is touched
 ```
+
+Exit codes: `0` healthy or recovered · `1` stuck and could not be recovered ·
+`3` stuck but recovery declined (or `--check-only`).
+
+`recover` remains as an alias for `doctor`.
 
 Logs are written next to the running copy (so dev runs log to the dev
 folder, installed runs to `~/bin`); override with `--log-dir`.
@@ -154,4 +165,4 @@ folder, installed runs to `~/bin`); override with `--log-dir`.
 | ----------- | ---------------------------------------------------- |
 | `ollama.py` | The whole tool (single file, stdlib-only)            |
 | `ollama.cmd`| Windows shim: runs the script without the flash-and-close console |
-| `.gitignore`| Keeps `__pycache__`, response captures, and recovery logs out of git |
+| `.gitignore`| Keeps `__pycache__`, response captures, and doctor/recovery logs out of git |

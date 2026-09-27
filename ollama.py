@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# v0.9.4
+# v0.9.5
 #
 # ollama wrapper: wildcards, model testing, and stuck-runner recovery
 # (all-in-one; replaces the separate ollama_fix.ps1).
@@ -204,10 +204,11 @@ def stop_running_models(verbose=False):
 
 
 # -----------------------------
-# Recovery ("recover")
+# Recovery ("doctor")
 #
-# Ported from ollama_fix.ps1. Diagnoses and recovers a stuck Ollama model
-# runner using ONLY the Python standard library:
+# Ported from ollama_fix.ps1. Probes whether inference works; if the runner
+# is wedged, reports it and asks for consent before ANY recovery action.
+# Standard library only:
 #   1. Informational online check for a newer Ollama version.
 #   2. Save diagnostics (version, ps, processes, nvidia-smi) to a log.
 #   3. Real inference test via a STREAMING request: first token = healthy.
@@ -528,8 +529,42 @@ def _kill_pid(pid):
         os.kill(pid, signal.SIGKILL)
 
 
-def cmd_recover(args):
+def _loaded_models():
+    """Return model names currently loaded, per 'ollama ps'."""
+    try:
+        r = subprocess.run(["ollama", "ps"], capture_output=True, text=True)
+    except Exception:
+        return []
+    lines = (r.stdout or "").strip().splitlines()
+    if len(lines) <= 1:
+        return []
+    return [parts[0] for parts in (line.split() for line in lines[1:]) if parts]
+
+
+def _ask_recovery(model):
+    """Consent prompt. Non-interactive stdin (EOF) => decline."""
+    try:
+        resp = input(
+            "\nRecover %s? (graceful stop, then a targeted kill of its\n"
+            "llama-server if it is still stuck) [y/N]: " % model
+        ).strip().lower()
+    except (EOFError, KeyboardInterrupt, OSError):
+        return False
+    return resp in ("y", "yes")
+
+
+def cmd_doctor(args):
     model = args.model
+    if not model:
+        # Default: whichever model is currently loaded (the likely stuck one).
+        loaded = _loaded_models()
+        if len(loaded) == 1:
+            model = loaded[0]
+        elif loaded:
+            die("multiple models loaded - specify one: " + ", ".join(loaded))
+        else:
+            die("no model given and nothing is loaded (see 'ollama ps')")
+
     url = args.url
     window = args.first_token_window
     stop_wait = args.stop_wait
@@ -538,7 +573,7 @@ def cmd_recover(args):
     if args.log_dir and args.log_dir not in (".", ""):
         os.makedirs(log_dir, exist_ok=True)
     logfile = os.path.join(
-        log_dir, "ollama_recover_%s.log" % datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        log_dir, "ollama_doctor_%s.log" % datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     )
 
     _log(logfile, "=== Ollama Recovery Started ===")
@@ -557,6 +592,17 @@ def cmd_recover(args):
         return 0
 
     _save_diagnostics(logfile, "Inference failed BEFORE recovery")
+
+    if args.check_only:
+        _log(logfile, "Stuck. --check-only given: no recovery attempted.")
+        print("\nStuck. No recovery attempted (--check-only).")
+        print("Re-run without -n (and with -y if you don't want to be asked).")
+        return 3
+
+    if not args.yes and not _ask_recovery(model):
+        _log(logfile, "Recovery declined by user - no changes made.")
+        print("OK - no changes made.")
+        return 3
 
     # Graceful recovery first.
     _log(logfile, "Inference is not working. Attempting graceful model stop...")
@@ -1183,24 +1229,28 @@ def main():
         help="Target bin directory (default: ~/bin on Windows, ~/.local/bin elsewhere)")
     p_install.set_defaults(func=cmd_install)
 
-    p_recover = sub.add_parser("recover",
-        help="Diagnose and recover a stuck Ollama model runner",
-        usage="ollama.py recover [MODEL] [--url URL] [--window N] [--stop-wait N]"
+    p_doctor = sub.add_parser("doctor",
+        help="Probe inference; recover a stuck runner (asks before acting)",
+        usage="ollama.py doctor [MODEL] [--url URL] [--first-token-window N] [--stop-wait N] [-y|-n]"
     )
-    p_recover.add_argument("model", nargs="?", default="qwen3.8:27b",
-                       help="Model to probe/recover (default: qwen3.8:27b)")
-    p_recover.add_argument("--url", default="http://localhost:11434",
+    p_doctor.add_argument("model", nargs="?", default=None,
+                       help="Model to probe/recover (default: whichever model is currently loaded, per 'ollama ps')")
+    p_doctor.add_argument("--url", default="http://localhost:11434",
                        help="Ollama server URL (default: http://localhost:11434)")
-    p_recover.add_argument("--first-token-window", type=int, default=20, dest="first_token_window",
+    p_doctor.add_argument("--first-token-window", type=int, default=20, dest="first_token_window",
                        help="Seconds to wait for a first token before treating "
                             "the runner as wedged (default: 20)")
-    p_recover.add_argument("--stop-wait", type=int, default=20, dest="stop_wait",
+    p_doctor.add_argument("--stop-wait", type=int, default=20, dest="stop_wait",
                        help="Seconds to wait for a graceful unload (default: 20)")
-    p_recover.add_argument("--no-update-check", action="store_true", dest="no_update_check",
+    p_doctor.add_argument("--no-update-check", action="store_true", dest="no_update_check",
                        help="Skip the online Ollama latest-version check")
-    p_recover.add_argument("--log-dir", default=None,
+    p_doctor.add_argument("--log-dir", default=None,
                        help="Where to write the log (default: next to this script)")
-    p_recover.set_defaults(func=cmd_recover)
+    p_doctor.add_argument("-y", "--yes", action="store_true",
+                       help="Answer 'yes' to the recovery prompt automatically")
+    p_doctor.add_argument("-n", "--check-only", action="store_true", dest="check_only",
+                       help="Diagnose only; never attempt recovery")
+    p_doctor.set_defaults(func=cmd_doctor)
 
     p_test = sub.add_parser("test",
         help="Create temp model, run test prompt, capture output",
@@ -1236,6 +1286,10 @@ def main():
 #
 
     p_test.set_defaults(func=cmd_test)
+
+    # 'recover' remains as an alias for the renamed 'doctor' command.
+    if len(sys.argv) > 1 and sys.argv[1] == "recover":
+        sys.argv[1] = "doctor"
 
     args = parser.parse_args()
 
