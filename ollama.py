@@ -1287,10 +1287,6 @@ def main():
 
     p_test.set_defaults(func=cmd_test)
 
-    # 'recover' remains as an alias for the renamed 'doctor' command.
-    if len(sys.argv) > 1 and sys.argv[1] == "recover":
-        sys.argv[1] = "doctor"
-
     args = parser.parse_args()
 
     # No subcommand: show help (exit quietly) instead of an argparse error.

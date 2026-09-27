@@ -154,8 +154,6 @@ ollama doctor -n                     # probe/report only; nothing is touched
 Exit codes: `0` healthy or recovered · `1` stuck and could not be recovered ·
 `3` stuck but recovery declined (or `--check-only`).
 
-`recover` remains as an alias for `doctor`.
-
 Logs are written next to the running copy (so dev runs log to the dev
 folder, installed runs to `~/bin`); override with `--log-dir`.
 
