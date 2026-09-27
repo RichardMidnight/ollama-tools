@@ -24,38 +24,44 @@ lacks:
 
 ## Installation
 
-Clone the repo:
+No build step and no dependencies — it's two files. Grab them and put
+them in a directory that's on your `PATH`.
+
+**Windows** (from PowerShell; `curl.exe` ships with Windows 10+):
+
+```powershell
+mkdir "$env:USERPROFILE\bin"
+curl.exe -o "$env:USERPROFILE\bin\ollama.py"  https://raw.githubusercontent.com/RichardMidnight/ollama-tools/main/ollama.py
+curl.exe -o "$env:USERPROFILE\bin\ollama.cmd" https://raw.githubusercontent.com/RichardMidnight/ollama-tools/main/ollama.cmd
+```
+
+**Unix / macOS:**
 
 ```sh
-git clone https://github.com/RichardMidnight/ollama-tools.git
-cd ollama-tools
+mkdir -p ~/.local/bin
+curl -fLo ~/.local/bin/ollama.py https://raw.githubusercontent.com/RichardMidnight/ollama-tools/main/ollama.py
+chmod +x ~/.local/bin/ollama.py
 ```
 
-The cloned folder is the *development copy*. To install it into a `PATH`
-bin directory for daily use, run its own install command:
-
-**Windows** — install into `%USERPROFILE%\bin` (default):
-
-```
-ollama.cmd install
-```
-
-Then make sure `%USERPROFILE%\bin` is on your `PATH` (the installer prints a
-warning if it isn't). From any terminal you can now just type:
+Then, as long as that directory is on your `PATH` (`%USERPROFILE%\bin` on
+Windows, `~/.local/bin` is on PATH by default on most Linux distros), you
+can just type:
 
 ```
 ollama list 'gemma*'
 ```
 
-**Unix / macOS** — install into `~/.local/bin` (default) and it's done:
+(If you downloaded to some other folder instead, drop the command's output
+wherever you like, or run the script's own installer from that folder:
+`ollama.cmd install [TARGET_DIR]` on Windows / `./ollama.py install [TARGET_DIR]`
+on Unix — it copies the script and shim into `%USERPROFILE%\bin` or
+`~/.local/bin` by default and tells you if the target isn't on PATH.)
 
-```sh
-chmod +x ollama.py
-./ollama.py install
-```
+### Updating
 
-`install [TARGET_DIR]` accepts an explicit destination on both platforms.
-Re-run it any time to update an installed copy from a newer dev copy.
+Re-run the download commands — they overwrite cleanly — or `git clone` the
+repo for a working copy and use `install` to push it into your bin dir.
+`ollama -V` shows you which copy (and version) is actually running.
 
 > **Windows note:** run `ollama.cmd`, not `ollama.py` directly — the `.py`
 > file association opens a detached console that flashes and closes.
