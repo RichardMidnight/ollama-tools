@@ -240,9 +240,53 @@ def _append(logfile, text):
         pass
 
 
-def _log(logfile, msg):
+_ANSI = None
+
+
+def _ansi(force=None):
+    """Decide once whether ANSI color codes may be used on stdout."""
+    global _ANSI
+    if force is not None:
+        _ANSI = force
+    if _ANSI is not None:
+        return _ANSI
+    if os.environ.get("NO_COLOR"):
+        _ANSI = False
+        return False
+    try:
+        if not sys.stdout.isatty():
+            _ANSI = False
+            return False
+    except (AttributeError, ValueError):
+        _ANSI = False
+        return False
+    if os.name == "nt":
+        # Win10+ conhost/Windows Terminal speak VT escape sequences; on older
+        # builds SetConsoleMode is refused and we fall back to plain text.
+        try:
+            import ctypes
+            k = ctypes.windll.kernel32
+            handle = k.GetStdHandle(-11)
+            mode = ctypes.c_uint()
+            if k.GetConsoleMode(handle, ctypes.byref(mode)):
+                k.SetConsoleMode(handle, mode.value | 0x0004)
+        except Exception:
+            _ANSI = False
+            return False
+    _ANSI = True
+    return True
+
+
+def _paint(color, text):
+    """Wrap text in green/red/yellow, or return it unchanged if no color."""
+    if not _ansi():
+        return text
+    return "\x1b[%sm%s\x1b[0m" % ({"green": 32, "red": 31, "yellow": 33}[color], text)
+
+
+def _log(logfile, msg, color=None):
     line = "%s  %s" % (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), msg)
-    print(line)
+    print(_paint(color, line) if color else line)
     _append(logfile, line + "\n")
 
 
@@ -415,7 +459,7 @@ def _test_inference(model, url, window, logfile):
         # watchdog fired: no token within the window => runner likely wedged
         pass
     except Exception as e:
-        _log(logfile, "Inference test FAILED (probe error): %s" % e)
+        _log(logfile, "Inference test FAILED (probe error): %s" % e, "red")
         return False
     finally:
         if conn is not None:
@@ -427,18 +471,18 @@ def _test_inference(model, url, window, logfile):
     if first_token is not None:
         sec = round(first_token, 1)
         if re.search(r"\bOK\b", answer):
-            _log(logfile, "Inference test PASSED - first token at %ss, answered 'OK'." % sec)
+            _log(logfile, "Inference test PASSED - first token at %ss, answered 'OK'." % sec, "green")
         else:
-            _log(logfile, "Inference test PASSED - first token at %ss; visible answer: '%s'" % (sec, answer))
+            _log(logfile, "Inference test PASSED - first token at %ss; visible answer: '%s'" % (sec, answer), "green")
             if answer == "":
                 _log(logfile, "   (tokens went to thinking - normal for Qwen thinking models)")
         return True
 
     if error_text is not None:
-        _log(logfile, "Inference test FAILED - server error: %s" % error_text)
+        _log(logfile, "Inference test FAILED - server error: %s" % error_text, "red")
         return False
 
-    _log(logfile, "Inference test FAILED - no token produced within %ss (runner likely wedged)." % window)
+    _log(logfile, "Inference test FAILED - no token produced within %ss (runner likely wedged)." % window, "red")
     return False
 
 
@@ -587,15 +631,15 @@ def cmd_doctor(args):
 
     # If real inference works, DO NOT TOUCH ANYTHING.
     if _test_inference(model, url, window, logfile):
-        _log(logfile, "Ollama is healthy (probe saw live generation). No recovery action required.")
+        _log(logfile, "Ollama is healthy (probe saw live generation). No recovery action required.", "green")
         _log(logfile, "=== Finished -- no changes made ===")
         return 0
 
     _save_diagnostics(logfile, "Inference failed BEFORE recovery")
 
     if args.check_only:
-        _log(logfile, "Stuck. --check-only given: no recovery attempted.")
-        print("\nStuck. No recovery attempted (--check-only).")
+        _log(logfile, "Stuck. --check-only given: no recovery attempted.", "red")
+        print("\n" + _paint("red", "Stuck. No recovery attempted (--check-only)."))
         print("Re-run without -n (and with -y if you don't want to be asked).")
         return 3
 
@@ -650,12 +694,12 @@ def cmd_doctor(args):
     _log(logfile, "Performing final inference test (fresh runner may need to cold-load)...")
     if _test_inference(model, url, window, logfile):
         _save_diagnostics(logfile, "Final healthy state")
-        _log(logfile, "=== RECOVERY SUCCESSFUL ===")
+        _log(logfile, "=== RECOVERY SUCCESSFUL ===", "green")
         _log(logfile, "Ollama is generating normally again.")
         return 0
     else:
         _save_diagnostics(logfile, "Recovery failed")
-        _log(logfile, "=== RECOVERY FAILED ===")
+        _log(logfile, "=== RECOVERY FAILED ===", "red")
         _log(logfile, "Ollama still cannot complete inference.")
         _log(logfile, "Review log: %s" % logfile)
         _log(logfile, "A full Ollama restart (stop the ollama process in Task Manager, relaunch) or a Windows reboot may be required.")
