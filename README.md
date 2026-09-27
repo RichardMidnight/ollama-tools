@@ -11,10 +11,8 @@ lacks:
   (`nemotron3:33b` + `-m my-sys` → `nemotron3-my-sys:33b`)
 - **`test`** — run a prompt against several models at once, optionally
   through a Modelfile, capture results to files, and get an LLM-judge rating
-- **`doctor`** — probe whether inference actually works; if the runner is
-  wedged, report it (diagnostic log) and **ask before acting** — on your
-  yes: graceful unload, targeted kill of only *your* model's `llama-server`,
-  re-probe
+- **`doctor`** — when a model hangs or stops responding: figures out what's
+  wrong, shows you, and only fixes it after you say yes
 - **Passthrough** for `ps`, `show`, `pull`
 
 ## Requirements
