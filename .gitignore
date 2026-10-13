@@ -8,3 +8,5 @@ ollama_recover_*.log
 ollama_fix_*.log
 # local archive of old versions/snapshots - git history replaces it
 old/
+# machine-specific runbook (local paths, PIDs, GGUF digest) - never push
+CONTEXT.md
