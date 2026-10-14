@@ -185,14 +185,13 @@ ollama ctx restart [-y]                     # re-apply the persisted value (Wind
   declines). Use it to flip a running server to its persisted value, or to claw
   back a session if the tray app re-imposed a lower cap.
 
-#### Durable 256k on Windows (bypass the tray app)
+#### Durable context on Windows (bypass the tray app)
 
 The Ollama Windows **tray app** (`ollama app.exe`) pins the server it launches
-to a smaller context (128k on this machine) *and ignores* the persisted
-`OLLAMA_CONTEXT_LENGTH` — so `ctx set 262144` alone won't hold once the tray
-app has started the server. The tray app also normally owns the
-`0.0.0.0:11434` LAN bind, so bypassing it must re-supply that or LAN / OpenWebUI
-access breaks.
+to a smaller context *and ignores* the persisted `OLLAMA_CONTEXT_LENGTH` — so
+`ctx set N` alone won't hold once the tray app has started the server. The tray
+app also normally owns the `0.0.0.0:11434` LAN bind, so bypassing it must
+re-supply that or LAN / OpenWebUI access breaks.
 
 Give a plain `ollama serve` the win on the port instead. Two fully-reversible
 changes in your per-user **Startup** folder (both only take effect at next
@@ -200,22 +199,28 @@ logon):
 
 - the tray-app shortcut is renamed `Ollama.lnk` → `Ollama.lnk.off` (disabled,
   not deleted — rename it back to restore); and
-- `Ollama-serve-256k.cmd` is added, which launches the real `ollama.exe serve`
-  with `OLLAMA_CONTEXT_LENGTH=262144` and `OLLAMA_HOST=http://0.0.0.0:11434`
-  baked in, and skips starting if `:11434` is already serving.
+- `Ollama-serve.cmd` is added, which launches the real `ollama.exe serve` with
+  `OLLAMA_HOST=http://0.0.0.0:11434` baked in and skips starting if `:11434` is
+  already serving. It does **not** bake a context value: it inherits
+  `OLLAMA_CONTEXT_LENGTH` from the registry (whatever `ctx set N` last chose)
+  and defaults to **128k (131072)** if that is unset. So the context that comes
+  up after a reboot is always the one `ctx set` last set — no stale number to
+  keep in sync, and you can change it again (128k / 150k / 256k) by running
+  `ollama ctx set N` with no edits to the launcher.
 
 > `ollama` on `PATH` resolves to a shim (`ollama.cmd`) that runs `ollama.py`,
 > so both `ctx restart` and the launcher resolve the **real** `ollama.exe`
 > explicitly to avoid launching the Python tool by mistake.
 
-**Activate now (no reboot):** `ollama ctx restart -y` — it drops every live
-session (including the assistant if it runs on Ollama), so run it last. **Or**
-just reboot once: the launcher brings up a 256k server and OpenWebUI reconnects.
-Verify with `ollama ctx get`.
+**Activate now (no reboot):** `ollama ctx set 131072 --restart -y` — or whatever
+value you want — it sets the registry *and* restarts the live server, which drops
+every live session (including the assistant if it runs on Ollama), so run it
+last. **Or** just reboot once: the launcher brings up the registered context
+(default 128k) and OpenWebUI reconnects. Verify with `ollama ctx get`.
 
-**Rollback:** delete `Startup\Ollama-serve-256k.cmd`; rename
-`Ollama.lnk.off` → `Ollama.lnk`; start the tray app; optionally
-`ollama ctx set 131072`.
+**Rollback to 256k:** `ollama ctx set 262144 --restart -y`.
+**Rollback to the tray app:** delete `Startup\Ollama-serve.cmd`; rename
+`Ollama.lnk.off` → `Ollama.lnk`; start the tray app.
 
 ### Stuck-runner doctor
 
